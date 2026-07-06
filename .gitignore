@@ -133,3 +133,6 @@ docs/fdroid-metadata-example.yml
 
 monorepo-reference
 
+
+# e2e suite output (traces, screenshots, reports)
+e2e/.artifacts/
