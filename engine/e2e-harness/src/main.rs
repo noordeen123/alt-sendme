@@ -12,7 +12,7 @@
 //! a test runner that dies without signalling still tears the share down:
 //! the child inherits a pipe, the pipe closes, we exit.
 
-use engine::{download, start_share, AddrInfoOptions, ReceiveOptions, SendOptions};
+use engine::{download, start_share_items, AddrInfoOptions, ReceiveOptions, SendOptions};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -41,18 +41,27 @@ async fn main() {
                 ticket_type,
                 ..Default::default()
             };
-            let share = start_share(path, options, None, None)
+            let share = start_share_items(vec![path], options, &None, None)
                 .await
-                .expect("start_share");
+                .expect("start_share_items");
 
             println!("TICKET={}", share.ticket);
             println!("HASH={}", share.hash);
             println!("SIZE={}", share.size);
             std::io::stdout().flush().ok();
 
-            let mut sink = Vec::new();
-            let mut stdin = tokio::io::stdin();
-            let stdin_eof = tokio::io::AsyncReadExt::read_to_end(&mut stdin, &mut sink);
+            // Drain stdin into a fixed buffer purely to detect EOF — bounded
+            // even if a runner writes data instead of just closing the pipe.
+            let stdin_eof = async {
+                let mut stdin = tokio::io::stdin();
+                let mut buf = [0u8; 1024];
+                loop {
+                    match tokio::io::AsyncReadExt::read(&mut stdin, &mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {}
+                    }
+                }
+            };
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {}
                 _ = stdin_eof => {}
