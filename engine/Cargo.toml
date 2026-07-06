@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "protocol", "native", "wasm-io"]
+members = [".", "protocol", "native", "wasm-io", "e2e-harness"]
 resolver = "2"
 
 [package]

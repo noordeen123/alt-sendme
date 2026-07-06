@@ -1,0 +1,21 @@
+[package]
+name = "e2e-harness"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "Native peer for the e2e suite (e2e/specs/interop.spec.ts): drives the engine API the desktop app wraps, so web<->native interop is tested against the real protocol stack"
+publish = false
+
+[[bin]]
+name = "e2e-interop"
+path = "src/main.rs"
+
+[dependencies]
+engine = { path = ".." }
+tokio = { version = "1.34.0", features = [
+  "rt-multi-thread",
+  "macros",
+  "signal",
+  "io-std",
+  "io-util",
+] }
