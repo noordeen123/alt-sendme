@@ -23,7 +23,7 @@
 		"test:e2e:engines": "playwright test -c e2e/playwright.config.ts --project=firefox --project=webkit --project=cross-engine",
 		"test:e2e:scale": "playwright test -c e2e/playwright.config.ts --project=scale",
 		"test:e2e:all": "playwright test -c e2e/playwright.config.ts",
-		"lint": "biome lint && tsc --noEmit --skipLibCheck",
+		"lint": "biome lint && tsc --noEmit --skipLibCheck && tsc -p e2e/tsconfig.json",
 		"lint:fix": "biome lint --fix",
 		"format": "biome format --write && cargo fmt --manifest-path engine/Cargo.toml && cargo fmt --manifest-path src-tauri/Cargo.toml",
 		"android:build:release": "node ./scripts/android-release-build.js",
