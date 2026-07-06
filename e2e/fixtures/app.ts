@@ -1,9 +1,9 @@
 import { createHash, randomFillSync } from 'node:crypto'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, type BrowserContext, type Page } from '@playwright/test'
 import { APP_URL } from '../playwright.config'
+import { S } from './strings'
 
 type CapturedBlob = { sha: string; len: number }
 
@@ -45,7 +45,7 @@ export async function openApp(context: BrowserContext): Promise<Page> {
 	const page = await context.newPage()
 	await page.addInitScript(blobCaptureHook)
 	await page.goto(APP_URL, { waitUntil: 'domcontentloaded' })
-	await expect(page.getByRole('tab', { name: 'Send' })).toBeVisible()
+	await expect(page.getByRole('tab', { name: S.sendTab })).toBeVisible()
 	return page
 }
 
@@ -56,10 +56,10 @@ export async function startShare(
 	filePath: string
 ): Promise<string> {
 	const chooser = page.waitForEvent('filechooser')
-	await page.getByRole('button', { name: 'Browse File' }).click()
+	await page.getByRole('button', { name: S.browseFile }).click()
 	await (await chooser).setFiles(filePath)
-	await page.getByRole('button', { name: /Start Sharing/i }).click()
-	await expect(page.getByText('Listening for connection')).toBeVisible({
+	await page.getByRole('button', { name: S.startSharing }).click()
+	await expect(page.getByText(S.listening)).toBeVisible({
 		timeout: 45_000,
 	})
 	const ticket = await page.locator('input[readonly]').first().inputValue()
@@ -67,9 +67,19 @@ export async function startShare(
 	return ticket
 }
 
+/** Stop an active share. The stop button calls stopSharing() directly
+ * (SharingActiveCard.tsx) — no confirm dialog while merely listening; if one
+ * is ever added, this fails visibly instead of silently skipping it. */
+export async function stopSharing(page: Page): Promise<void> {
+	await page.getByRole('button', { name: S.stopSharing }).click()
+	await expect(page.getByRole('button', { name: S.browseFile })).toBeVisible({
+		timeout: 15_000,
+	})
+}
+
 export async function openReceiveTab(page: Page): Promise<void> {
-	await page.getByRole('tab', { name: 'Receive' }).click()
-	await expect(page.getByRole('button', { name: /^Download/ })).toBeVisible()
+	await page.getByRole('tab', { name: S.receiveTab }).click()
+	await expect(page.getByRole('button', { name: S.download })).toBeVisible()
 }
 
 /** Playwright's fill() drives the real input pipeline, so React's controlled
@@ -79,7 +89,7 @@ export async function pasteTicket(page: Page, ticket: string): Promise<void> {
 }
 
 export async function clickDownload(page: Page): Promise<void> {
-	const button = page.getByRole('button', { name: /^Download/ })
+	const button = page.getByRole('button', { name: S.download })
 	await expect(button).toBeEnabled()
 	await button.click()
 }
@@ -88,7 +98,19 @@ export async function expectTransferComplete(
 	page: Page,
 	timeout = 90_000
 ): Promise<void> {
-	await expect(page.getByText('Transfer Complete!')).toBeVisible({ timeout })
+	await expect(page.getByText(S.transferComplete)).toBeVisible({ timeout })
+}
+
+/** The receive-side happy path: paste a ticket, download, wait for done. */
+export async function receive(
+	page: Page,
+	ticket: string,
+	timeout = 90_000
+): Promise<void> {
+	await openReceiveTab(page)
+	await pasteTicket(page, ticket)
+	await clickDownload(page)
+	await expectTransferComplete(page, timeout)
 }
 
 /** The "Receive Failed" alert dialog. Returns its message text. */
@@ -99,17 +121,20 @@ export async function expectReceiveFailed(
 	const dialog = page.getByRole('alertdialog')
 	await expect(dialog).toBeVisible({ timeout })
 	const text = (await dialog.innerText()).replace(/\s+/g, ' ').trim()
-	await dialog.getByRole('button', { name: 'OK' }).click()
+	await dialog.getByRole('button', { name: S.ok }).click()
 	return text
 }
 
-/** Wait for the receiver to hand its bytes to createObjectURL, return digest. */
+/** Wait for the receiver to hand its bytes to createObjectURL, return digest.
+ * Single waitForFunction so the handle refers to the exact blob that resolved
+ * the wait — a follow-up evaluate could race a second blob landing. */
 export async function capturedBlob(page: Page): Promise<CapturedBlob> {
-	await page.waitForFunction(() => window.__e2eBlobs.length > 0, undefined, {
-		timeout: 15_000,
-	})
-	const blobs = await page.evaluate(() => window.__e2eBlobs)
-	return blobs[blobs.length - 1]
+	const handle = await page.waitForFunction(
+		() => window.__e2eBlobs.at(-1) ?? null,
+		undefined,
+		{ timeout: 15_000 }
+	)
+	return (await handle.jsonValue()) as CapturedBlob
 }
 
 export function sha256(buf: Buffer): string {
@@ -120,14 +145,14 @@ export function sha256File(path: string): string {
 	return sha256(readFileSync(path))
 }
 
-/** Unique random file in a fresh temp dir; content differs per call so a
- * stale share from a previous test can never satisfy a checksum. */
-export function makeTestFile(
+/** Random file inside `dir` (owned and cleaned by the tmpDir fixture).
+ * allocUnsafe is safe here: randomFillSync overwrites every byte. */
+export function writeTestFile(
+	dir: string,
 	name: string,
 	size = 96
 ): { path: string; sha: string; size: number } {
-	const dir = mkdtempSync(join(tmpdir(), 'altsendme-e2e-'))
-	const buf = Buffer.alloc(size)
+	const buf = Buffer.allocUnsafe(size)
 	randomFillSync(buf)
 	const path = join(dir, name)
 	writeFileSync(path, buf)

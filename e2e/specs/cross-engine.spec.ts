@@ -1,14 +1,5 @@
 import { firefox, webkit } from '@playwright/test'
-import {
-	capturedBlob,
-	clickDownload,
-	expectTransferComplete,
-	makeTestFile,
-	openApp,
-	openReceiveTab,
-	pasteTicket,
-	startShare,
-} from '../fixtures/app'
+import { capturedBlob, openApp, receive, startShare } from '../fixtures/app'
 import { expect, test } from '../fixtures/test'
 
 /**
@@ -18,8 +9,8 @@ import { expect, test } from '../fixtures/test'
  */
 test('webkit sender -> firefox receiver, byte-for-byte', {
 	tag: '@cross-engine',
-}, async () => {
-	const file = makeTestFile('xengine.bin', 4096)
+}, async ({ makeFile }) => {
+	const file = makeFile('cross-engine.bin', 4096)
 
 	const wk = await webkit.launch()
 	const ff = await firefox.launch()
@@ -28,10 +19,7 @@ test('webkit sender -> firefox receiver, byte-for-byte', {
 		const ticket = await startShare(sender, file.path)
 
 		const receiver = await openApp(await ff.newContext())
-		await openReceiveTab(receiver)
-		await pasteTicket(receiver, ticket)
-		await clickDownload(receiver)
-		await expectTransferComplete(receiver)
+		await receive(receiver, ticket)
 
 		const blob = await capturedBlob(receiver)
 		expect(blob.len).toBe(file.size)

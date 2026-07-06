@@ -1,7 +1,8 @@
-import { existsSync } from 'node:fs'
 import { lookup } from 'node:dns/promises'
+import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { buildHarness, cargoAvailable } from './fixtures/native-peer'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -25,5 +26,14 @@ export default async function globalSetup() {
 		throw new Error(
 			'offline? e2e transfers round-trip through public iroh relays and need internet'
 		)
+	}
+
+	// Pay the interop harness's cold cargo build here, where no hook timeout
+	// applies — on a fresh clone this takes minutes, which would blow the
+	// 120s beforeAll budget inside interop.spec. Workers then only pay a
+	// warm freshness check. Skipped without a rust toolchain (interop specs
+	// self-skip to match).
+	if (cargoAvailable()) {
+		await buildHarness()
 	}
 }

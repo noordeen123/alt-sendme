@@ -1,29 +1,27 @@
 import {
 	capturedBlob,
-	clickDownload,
 	expectTransferComplete,
-	makeTestFile,
 	openApp,
 	openReceiveTab,
 	pasteTicket,
+	receive,
 	startShare,
+	stopSharing,
 } from '../fixtures/app'
+import { S } from '../fixtures/strings'
 import { expect, test } from '../fixtures/test'
 
 test.describe('core transfer path', () => {
 	test('web to web: single file arrives byte-for-byte, both sides report completion', {
 		tag: '@core',
-	}, async ({ senderCtx, receiverCtx }) => {
-		const file = makeTestFile('roundtrip.bin', 4096)
+	}, async ({ senderCtx, receiverCtx, makeFile }) => {
+		const file = makeFile('roundtrip.bin', 4096)
 
 		const sender = await openApp(senderCtx)
 		const ticket = await startShare(sender, file.path)
 
 		const receiver = await openApp(receiverCtx)
-		await openReceiveTab(receiver)
-		await pasteTicket(receiver, ticket)
-		await clickDownload(receiver)
-		await expectTransferComplete(receiver)
+		await receive(receiver, ticket)
 
 		// integrity: what came out of the WASM engine === what went in
 		const blob = await capturedBlob(receiver)
@@ -36,8 +34,8 @@ test.describe('core transfer path', () => {
 
 	test('receiver previews file name and size before downloading', {
 		tag: '@core',
-	}, async ({ senderCtx, receiverCtx }) => {
-		const file = makeTestFile('preview-me.txt', 96)
+	}, async ({ senderCtx, receiverCtx, makeFile }) => {
+		const file = makeFile('preview-me.txt', 96)
 
 		const sender = await openApp(senderCtx)
 		const ticket = await startShare(sender, file.path)
@@ -55,28 +53,14 @@ test.describe('core transfer path', () => {
 
 	test('stop sharing returns sender to idle and a new share works', {
 		tag: '@core',
-	}, async ({ senderCtx }) => {
-		const first = makeTestFile('first.bin', 512)
-		const second = makeTestFile('second.bin', 512)
+	}, async ({ senderCtx, makeFile }) => {
+		const first = makeFile('first.bin', 512)
+		const second = makeFile('second.bin', 512)
 
 		const sender = await openApp(senderCtx)
 		const firstTicket = await startShare(sender, first.path)
 
-		await sender.getByRole('button', { name: /stop sharing/i }).click()
-		// stopping mid-transfer asks for confirmation; stopping while idle may not
-		const dialog = sender.getByRole('alertdialog')
-		const confirming = await dialog
-			.waitFor({ state: 'visible', timeout: 1_500 })
-			.then(() => true)
-			.catch(() => false)
-		if (confirming) {
-			await dialog.getByRole('button', { name: /stop/i }).click()
-		}
-		await expect(
-			sender.getByRole('button', { name: 'Browse File' })
-		).toBeVisible({
-			timeout: 15_000,
-		})
+		await stopSharing(sender)
 
 		const secondTicket = await startShare(sender, second.path)
 		expect(secondTicket).not.toBe(firstTicket)
@@ -88,7 +72,7 @@ test.describe('core transfer path', () => {
 		const receiver = await openApp(receiverCtx)
 		await openReceiveTab(receiver)
 
-		const download = receiver.getByRole('button', { name: /^Download/ })
+		const download = receiver.getByRole('button', { name: S.download })
 		await expect(download).toBeDisabled()
 
 		await pasteTicket(receiver, '   \n  ')

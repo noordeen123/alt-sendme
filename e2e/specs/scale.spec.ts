@@ -2,7 +2,6 @@ import {
 	capturedBlob,
 	clickDownload,
 	expectTransferComplete,
-	makeTestFile,
 	openApp,
 	openReceiveTab,
 	pasteTicket,
@@ -15,11 +14,14 @@ import { expect, test } from '../fixtures/test'
  * (MemStore, no streaming) — this is the documented size limitation. 50 MB
  * is the regression floor: it worked at suite creation, it must keep working.
  * Random bytes, so OS page compression can't flatter the numbers.
+ *
+ * Uses the step helpers instead of receive() so the timer brackets exactly
+ * the download, not the tab-switch/paste setup.
  */
 test('50 MB file transfers intact through the relay', {
 	tag: '@scale',
-}, async ({ senderCtx, receiverCtx }) => {
-	const file = makeTestFile('big-50mb.bin', 50 * 1024 * 1024)
+}, async ({ senderCtx, receiverCtx, makeFile }) => {
+	const file = makeFile('big-50mb.bin', 50 * 1024 * 1024)
 
 	const sender = await openApp(senderCtx)
 	const ticket = await startShare(sender, file.path)

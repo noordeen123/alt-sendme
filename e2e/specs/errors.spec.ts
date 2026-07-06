@@ -1,13 +1,14 @@
 import {
 	clickDownload,
 	expectReceiveFailed,
-	expectTransferComplete,
-	makeTestFile,
 	openApp,
 	openReceiveTab,
 	pasteTicket,
+	receive,
 	startShare,
+	stopSharing,
 } from '../fixtures/app'
+import { S } from '../fixtures/strings'
 import { expect, test } from '../fixtures/test'
 
 test.describe('failure handling', () => {
@@ -25,32 +26,19 @@ test.describe('failure handling', () => {
 		// recoverable: input still editable, button still wired
 		await pasteTicket(receiver, 'blobstillgarbage')
 		await expect(
-			receiver.getByRole('button', { name: /^Download/ })
+			receiver.getByRole('button', { name: S.download })
 		).toBeEnabled()
 	})
 
 	test('ticket whose sender stopped sharing fails within bounded time', async ({
 		senderCtx,
 		receiverCtx,
+		makeFile,
 	}) => {
-		const file = makeTestFile('gone.bin', 512)
+		const file = makeFile('gone.bin', 512)
 		const sender = await openApp(senderCtx)
 		const ticket = await startShare(sender, file.path)
-
-		await sender.getByRole('button', { name: /stop sharing/i }).click()
-		const confirm = sender.getByRole('alertdialog')
-		const confirming = await confirm
-			.waitFor({ state: 'visible', timeout: 1_500 })
-			.then(() => true)
-			.catch(() => false)
-		if (confirming) {
-			await confirm.getByRole('button', { name: /stop/i }).click()
-		}
-		await expect(
-			sender.getByRole('button', { name: 'Browse File' })
-		).toBeVisible({
-			timeout: 15_000,
-		})
+		await stopSharing(sender)
 
 		const receiver = await openApp(receiverCtx)
 		await openReceiveTab(receiver)
@@ -65,8 +53,9 @@ test.describe('failure handling', () => {
 	test('ticket whose sender tab closed fails within bounded time', async ({
 		senderCtx,
 		receiverCtx,
+		makeFile,
 	}) => {
-		const file = makeTestFile('closed.bin', 512)
+		const file = makeFile('closed.bin', 512)
 		const sender = await openApp(senderCtx)
 		const ticket = await startShare(sender, file.path)
 
@@ -83,17 +72,15 @@ test.describe('failure handling', () => {
 	test('second download of the same ticket resolves instead of hanging', async ({
 		senderCtx,
 		receiverCtx,
+		makeFile,
 	}, testInfo) => {
-		const file = makeTestFile('twice.bin', 1024)
+		const file = makeFile('twice.bin', 1024)
 		const sender = await openApp(senderCtx)
 		const ticket = await startShare(sender, file.path)
 
 		const receiver = await openApp(receiverCtx)
-		await openReceiveTab(receiver)
-		await pasteTicket(receiver, ticket)
-		await clickDownload(receiver)
-		await expectTransferComplete(receiver)
-		await receiver.getByRole('button', { name: 'Done' }).click()
+		await receive(receiver, ticket)
+		await receiver.getByRole('button', { name: S.done }).click()
 
 		await pasteTicket(receiver, ticket)
 		await clickDownload(receiver)
@@ -101,11 +88,11 @@ test.describe('failure handling', () => {
 		// documents actual behavior: web shares may or may not survive their
 		// first download — either outcome is acceptable, a hang is not
 		const outcome = receiver
-			.getByText('Transfer Complete!')
+			.getByText(S.transferComplete)
 			.or(receiver.getByRole('alertdialog'))
 		await expect(outcome.first()).toBeVisible({ timeout: 100_000 })
 		const succeeded = await receiver
-			.getByText('Transfer Complete!')
+			.getByText(S.transferComplete)
 			.isVisible()
 			.catch(() => false)
 		testInfo.annotations.push({
@@ -116,8 +103,9 @@ test.describe('failure handling', () => {
 
 	test('reload during an active share resets to idle', async ({
 		senderCtx,
+		makeFile,
 	}) => {
-		const file = makeTestFile('reload.bin', 512)
+		const file = makeFile('reload.bin', 512)
 		const sender = await openApp(senderCtx)
 		await startShare(sender, file.path)
 
@@ -126,7 +114,7 @@ test.describe('failure handling', () => {
 		// the share dies with the WASM instance (documented limitation);
 		// what must not happen is a stuck "sharing" UI with no session behind it
 		await expect(
-			sender.getByRole('button', { name: 'Browse File' })
+			sender.getByRole('button', { name: S.browseFile })
 		).toBeVisible({
 			timeout: 15_000,
 		})

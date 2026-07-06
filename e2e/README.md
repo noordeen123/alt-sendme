@@ -21,11 +21,12 @@ Failure artifacts (traces, screenshots, HTML report) land in `e2e/.artifacts/`.
 
 ```
 playwright.config.ts   port 3199 (strict, 127.0.0.1-pinned), one worker, 5 projects
-global-setup.ts        preflight: wasm bundle exists, network reachable
+global-setup.ts        preflight: wasm bundle, network, cold harness build
 fixtures/
   app.ts               page helpers + the blob-capture hook (see below)
   native-peer.ts       builds and drives engine/e2e-harness (binary: e2e-interop)
-  test.ts              per-test isolated sender/receiver BrowserContexts
+  strings.ts           selectors sourced from the app's en translation file
+  test.ts              isolated sender/receiver contexts, cleaned tmp payloads
 specs/
   core.spec.ts         happy path, metadata preview, share lifecycle   @core
   errors.spec.ts       garbage/dead tickets, closed sender, reload

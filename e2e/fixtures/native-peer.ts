@@ -1,28 +1,43 @@
 import {
-	execFileSync,
 	execFile,
+	execFileSync,
 	spawn,
 	type ChildProcess,
 } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const MANIFEST = join(REPO, 'engine', 'Cargo.toml')
 const BINARY = join(REPO, 'engine', 'target', 'debug', 'e2e-interop')
 
+const CARGO_ARGS = ['build', '--manifest-path', MANIFEST, '-p', 'e2e-harness']
+
+export function cargoAvailable(): boolean {
+	try {
+		execFileSync('cargo', ['--version'], { stdio: 'pipe' })
+		return true
+	} catch {
+		return false
+	}
+}
+
+/** Async cold build for global setup, where there is no hook timeout and the
+ * event loop stays free. A fresh clone builds for minutes; doing that inside
+ * a spec's beforeAll would blow Playwright's 120s hook budget. */
+export async function buildHarness(): Promise<void> {
+	await promisify(execFile)('cargo', CARGO_ARGS, { timeout: 600_000 })
+}
+
 let built = false
 
-/** Build the `engine/e2e-harness` crate once per run. Warm builds are
- * seconds; a cold one can take minutes, hence the generous timeout. */
+/** Warm freshness check inside workers (globalSetup already paid the cold
+ * build; cargo just verifies up-to-dateness here, typically <2s). */
 export function ensureHarness(): string {
 	if (!built) {
-		execFileSync(
-			'cargo',
-			['build', '--manifest-path', MANIFEST, '-p', 'e2e-harness'],
-			{ stdio: 'pipe', timeout: 600_000 }
-		)
+		execFileSync('cargo', CARGO_ARGS, { stdio: 'pipe', timeout: 600_000 })
 		built = true
 	}
 	if (!existsSync(BINARY)) {
@@ -66,7 +81,9 @@ export class NativeSender {
 				reject(new Error(`native sender exited early (code ${code})\n${out}`))
 			})
 		})
-		// exit is expected after stop(); swallow the rejection installed above
+		// prevents an unhandledRejection warning when the expected post-stop
+		// exit fires after ready already resolved; awaiting callers still see
+		// real pre-ticket failures because .catch() does not detach them
 		this.ready.catch(() => {})
 	}
 
@@ -76,13 +93,15 @@ export class NativeSender {
 			this.child.once('exit', () => resolve())
 		)
 		this.child.stdin?.end()
-		const timeout = new Promise<void>((resolve) =>
-			setTimeout(() => {
+		let killTimer: NodeJS.Timeout | undefined
+		const timeout = new Promise<void>((resolve) => {
+			killTimer = setTimeout(() => {
 				this.child.kill('SIGKILL')
 				resolve()
 			}, 10_000)
-		)
+		})
 		await Promise.race([exited, timeout])
+		clearTimeout(killTimer)
 	}
 }
 
